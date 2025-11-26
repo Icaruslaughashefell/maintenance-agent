@@ -2,10 +2,6 @@ fastapi
 uvicorn
 streamlit
 requests
-fastapi
-uvicorn
-streamlit
-requests
 sentence-transformers
 scikit-learn
 pypdf
