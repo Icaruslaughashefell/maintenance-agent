@@ -1,11 +1,10 @@
 """
-maintenance_agent_backend.py
-====================================================
-Backend สำหรับ Maintenance Agent (Multi-client, Central DB)
-
-- FastAPI + Uvicorn
-- Vision Stub + RAG จาก PDF
-- Log ทุก request ลง SQLite + เซฟรูปในโฟลเดอร์ logs/ บนเครื่องเซิร์ฟเวอร์
+unified_app.py
+=====================================================
+Unified Streamlit + FastAPI Deployment
+- Runs FastAPI as background thread
+- Streamlit frontend calls local FastAPI server
+- Single deployment; both accessible on default Streamlit port
 """
 
 import base64
@@ -13,11 +12,14 @@ import io
 import time
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 
 import numpy as np
+import streamlit as st
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,29 +27,31 @@ from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import NearestNeighbors
 from pypdf import PdfReader
 from PIL import Image
+import uvicorn
 
-# ------------------------------------------------------------
-# ========== Config Paths ====================================
-# ------------------------------------------------------------
+# ============================================================
+# ========== CONFIG & PATHS ================================
+# ============================================================
 
 ROOT_DIR = Path(__file__).parent
-MANUAL_DIR = ROOT_DIR / "manuals"          # PDF manuals
-INDEX_PATH = ROOT_DIR / "manual_index.npz" # RAG index
-LOG_DIR = ROOT_DIR / "logs"                # images + db
-DB_PATH = LOG_DIR / "maintenance_logs.db"  # SQLite DB
+MANUAL_DIR = ROOT_DIR / "manuals"
+INDEX_PATH = ROOT_DIR / "manual_index.npz"
+LOG_DIR = ROOT_DIR / "logs"
+DB_PATH = LOG_DIR / "maintenance_logs.db"
 
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 200
+FASTAPI_PORT = 8001  # Changed from 8000 to avoid conflicts
+API_BASE_URL = f"http://127.0.0.1:{FASTAPI_PORT}"
 
-
-# ------------------------------------------------------------
-# ========== API Schemas =====================================
-# ------------------------------------------------------------
+# ============================================================
+# ========== FASTAPI SCHEMAS ===============================
+# ============================================================
 
 class AnalyzeRequest(BaseModel):
     image_base64: str
     question: Optional[str] = None
-    client_id: Optional[str] = None   # ระบุชื่อเครื่อง / user ก็ได้
+    client_id: Optional[str] = None
 
 
 class RAGSource(BaseModel):
@@ -66,9 +70,9 @@ class AnalyzeResponse(BaseModel):
     latency_ms: float
 
 
-# ------------------------------------------------------------
-# ========== RAG Index =======================================
-# ------------------------------------------------------------
+# ============================================================
+# ========== RAG INDEX CLASS ===============================
+# ============================================================
 
 class ManualIndex:
     def __init__(self):
@@ -166,9 +170,9 @@ class ManualIndex:
 manual_index = ManualIndex()
 
 
-# ------------------------------------------------------------
-# ========== Vision Stub =====================================
-# ------------------------------------------------------------
+# ============================================================
+# ========== VISION STUB ===================================
+# ============================================================
 
 def decode_image(image_base64: str) -> Tuple[Image.Image, bytes]:
     try:
@@ -183,7 +187,8 @@ def build_vision_prompt(question: Optional[str] = None) -> str:
     base = """
 You are an expert maintenance engineer in a factory.
 You receive a photo of a machine/component.
-...
+Analyze it and detect any defects: rust, leaks, cracks, loose bolts, misalignment, etc.
+Respond ONLY in JSON format with: {"defect_type": "...", "status": "OK" or "NG", "confidence": 0.0-1.0}
 """
     if question:
         base += f"\nUser additional question: {question}\n"
@@ -210,9 +215,9 @@ def call_vlm_stub(image_base64: str, question: Optional[str] = None) -> Dict[str
     }
 
 
-# ------------------------------------------------------------
-# ========== Logging (SQLite + images) =======================
-# ------------------------------------------------------------
+# ============================================================
+# ========== DATABASE LOGGING ==============================
+# ============================================================
 
 def init_db():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -277,15 +282,15 @@ def save_log(req: AnalyzeRequest, resp: AnalyzeResponse, img_bytes: bytes) -> No
     conn.close()
 
 
-# ------------------------------------------------------------
-# ========== FastAPI App =====================================
-# ------------------------------------------------------------
+# ============================================================
+# ========== FASTAPI APP ==================================
+# ============================================================
 
 app = FastAPI(title="Maintenance Agent Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ใน production ควรจำกัด origin
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -296,7 +301,6 @@ app.add_middleware(
 def startup_event():
     MANUAL_DIR.mkdir(parents=True, exist_ok=True)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-
     init_db()
     manual_index.load_or_build(MANUAL_DIR)
     print("[Startup] RAG index ready.")
@@ -306,22 +310,22 @@ def startup_event():
 def analyze(req: AnalyzeRequest):
     t0 = time.time()
 
-    # 1) decode รูป
+    # 1) Decode image
     img, img_bytes = decode_image(req.image_base64)
 
-    # 2) คอล Vision (ตอนนี้ใช้ stub)
-    _ = build_vision_prompt(req.question)  # เผื่อใช้ในอนาคตกับ VLM จริง
+    # 2) Call Vision (stub)
+    _ = build_vision_prompt(req.question)
     vision_result = call_vlm_stub(req.image_base64, req.question)
 
     defect_type = vision_result["defect_type"]
     status = vision_result["status"]
     confidence = float(vision_result["confidence"])
 
-    # 3) RAG
+    # 3) RAG retrieval
     rag_query = defect_type if defect_type != "normal" else "preventive maintenance"
     rag_results = manual_index.search(rag_query, top_k=3)
 
-    # 4) สร้างข้อความแนะนำ
+    # 4) Generate action text
     if not rag_results:
         if status == "OK":
             action_text = (
@@ -359,19 +363,134 @@ def analyze(req: AnalyzeRequest):
         latency_ms=latency_ms,
     )
 
-    # 5) เซฟ log บนเครื่องเซิร์ฟเวอร์
+    # 5) Save log
     save_log(req, resp_obj, img_bytes)
 
     return resp_obj
 
 
-if __name__ == "__main__":
-    import uvicorn
+# ============================================================
+# ========== STREAMLIT FRONTEND ============================
+# ============================================================
 
-    # host=0.0.0.0 เพื่อให้เครื่องอื่นใน LAN เรียกได้
-    uvicorn.run(
-        "maintenance_agent_backend:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+def run_fastapi_in_thread():
+    """Run FastAPI server in a background thread"""
+    config = uvicorn.Config(
+        app=app,
+        host="127.0.0.1",
+        port=FASTAPI_PORT,
+        log_level="info"
     )
+    server = uvicorn.Server(config)
+    asyncio.run(server.serve())
+
+
+# Initialize FastAPI server once when Streamlit starts
+if "fastapi_started" not in st.session_state:
+    import asyncio
+    
+    # Start FastAPI in background thread
+    fastapi_thread = threading.Thread(target=run_fastapi_in_thread, daemon=True)
+    fastapi_thread.start()
+    
+    # Give server time to start
+    time.sleep(2)
+    
+    st.session_state.fastapi_started = True
+
+
+# Streamlit UI
+st.set_page_config(page_title="Maintenance Agent", layout="wide")
+st.title("🛠️ Maintenance Agent – Vision + RAG")
+
+# Sidebar config
+st.sidebar.header("⚙️ Settings")
+client_id = st.sidebar.text_input(
+    "Client ID (Machine/User Name)",
+    value="client-1",
+    help="Identifier for this machine/operator"
+)
+
+# Main layout
+col_left, col_right = st.columns([1, 1])
+
+with col_left:
+    st.subheader("1️⃣ Upload Machine Image")
+    uploaded_file = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
+
+    user_question = st.text_area(
+        "Optional question (symptom/sound/vibration)",
+        help="Additional context for the AI analysis"
+    )
+
+    file_bytes = None
+    if uploaded_file is not None:
+        file_bytes = uploaded_file.getvalue()
+        st.image(file_bytes, caption="Preview", use_column_width=True)
+
+    run_button = st.button("🔍 Analyze", type="primary")
+
+with col_right:
+    st.subheader("2️⃣ Analysis Result")
+
+    if run_button:
+        if file_bytes is None:
+            st.warning("⚠️ Please upload an image first")
+        else:
+            img_b64 = base64.b64encode(file_bytes).decode("utf-8")
+
+            payload = {
+                "image_base64": img_b64,
+                "question": user_question or None,
+                "client_id": client_id or None,
+            }
+
+            try:
+                with st.spinner("🔄 Analyzing machine image..."):
+                    t0 = time.time()
+                    resp = requests.post(f"{API_BASE_URL}/analyze", json=payload, timeout=60)
+                    roundtrip_ms = (time.time() - t0) * 1000
+
+                if resp.status_code != 200:
+                    st.error(f"❌ API Error: {resp.status_code}\n{resp.text}")
+                else:
+                    data = resp.json()
+
+                    # Display key metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Status", data["status"], delta="OK" if data["status"] == "OK" else "ALERT")
+                    with col2:
+                        st.metric("Defect Type", data["defect_type"])
+                    with col3:
+                        st.metric("Confidence", f"{data['confidence']:.2%}")
+                    with col4:
+                        st.metric("Latency", f"{data.get('latency_ms', 0):.0f}ms")
+
+                    # Action recommended
+                    st.markdown("### 📋 Recommended Action")
+                    st.write(data["action_recommended"])
+
+                    # RAG sources
+                    st.markdown("### 📚 Reference Materials")
+                    if data["rag_sources"]:
+                        for i, src in enumerate(data["rag_sources"], 1):
+                            with st.expander(f"Source {i}: {src['manual_name']} (p.{src['page']}) — Score: {src['score']:.2f}"):
+                                st.write(src["snippet"])
+                    else:
+                        st.info("No manual references found for this defect type.")
+
+            except requests.exceptions.ConnectionError:
+                st.error("❌ Cannot connect to backend. Is FastAPI running?")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+
+
+# Footer
+st.divider()
+st.markdown("""
+---
+**Maintenance Agent** | Vision + RAG System for Factory Diagnostics
+- Backend: FastAPI running internally
+- Frontend: Streamlit
+""")

@@ -367,11 +367,15 @@ def analyze(req: AnalyzeRequest):
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+
+    # Get port from environment or use default
+    port = int(os.getenv("FASTAPI_PORT", "8000"))
 
     # host=0.0.0.0 เพื่อให้เครื่องอื่นใน LAN เรียกได้
     uvicorn.run(
         "maintenance_agent_backend:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=True,
     )
