@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factory Maintenance Dashboard</title>
+    <link rel="stylesheet" href="CSS/style.css">
+</head>
+
+<body>
+    <div class="dashboard-container">
+
+        <header>
+            <h1>⚙️ Factory Machine Maintenance Overview</h1>
+            <p>Data Status: Last Updated 2025-11-27 19:30 UTC</p>
+        </header>
+
+        <div class="kpis-grid">
+
+            <div class="kpi-card performance">
+                <h3>Success Rate (Uptime)</h3>
+                <p class="kpi-value">97.4%</p>
+                <p class="kpi-detail">Target: 98%</p>
+            </div>
+
+            <div class="kpi-card quality">
+                <h3>Avg. Latency</h3>
+                <p class="kpi-value">285 ms</p>
+                <p class="kpi-detail">5% slower than last week</p>
+            </div>
+
+            <div class="kpi-card risk">
+                <h3>Critical Defects (Last 24h)</h3>
+                <p class="kpi-value danger">3</p>
+                <p class="kpi-detail">Requires immediate action</p>
+            </div>
+
+        </div>
+
+        <div class="charts-section">
+
+            <div class="chart-card">
+                <h2>📈 Defect Type Frequency</h2>
+                <div class="chart-placeholder">
+                    [Bar Chart showing 'Bearing Wear' (45), 'Misalignment' (30), 'Overheating' (15)]
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h2>⏱️ Latency Trend (Past 7 Days)</h2>
+                <div class="chart-placeholder">
+                    [Line Chart showing Average Latency fluctuating over the week]
+                </div>
+            </div>
+
+        </div>
+
+        <div class="logs-section">
+            <h2>🚨 Low Confidence & Failure Logs (Action Required)</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Client ID</th>
+                        <th>Question/Query</th>
+                        <th>Defect Type</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>19:25:12</td>
+                        <td>MCH-4B</td>
+                        <td>Run diagnostic mode</td>
+                        <td>Gear Tooth Damage</td>
+                        <td class="danger">0.68</td>
+                    </tr>
+
+                    <tr>
+                        <td>18:40:05</td>
+                        <td>MCH-1A</td>
+                        <td>Check vibration status</td>
+                        <td>Undefined</td>
+                        <td>0.79</td>
+                    </tr>
+
+                    <tr>
+                        <td>17:01:55</td>
+                        <td>MCH-2C</td>
+                        <td>Is there a fault?</td>
+                        <td>Bearing Wear</td>
+                        <td class="success">0.99</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+</body>
+</html>
