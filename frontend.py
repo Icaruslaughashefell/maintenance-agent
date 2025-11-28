@@ -31,9 +31,9 @@ from datetime import datetime, timedelta
 # ---------------------
 DEFAULT_API_URL = "http://127.0.0.1:8000/analyze"
 
-# ให้ชี้ไปที่โฟลเดอร์ logs เดียวกับ backend
+# path default (กรณีรัน frontend บนเครื่องเดียวกับ backend)
 ROOT_DIR = Path(__file__).parent
-DB_PATH = ROOT_DIR / "logs" / "maintenance_logs.db"
+DEFAULT_DB_PATH = ROOT_DIR / "logs" / "maintenance_logs.db"
 
 
 st.set_page_config(
@@ -132,6 +132,17 @@ mode = st.sidebar.radio(
 
 api_url = st.sidebar.text_input("Backend API URL", DEFAULT_API_URL)
 
+# 🔌 Dashboard DB path (ดึงจากเครื่องไหนก็ได้)
+db_path_str = st.sidebar.text_input(
+    "Dashboard DB path",
+    value=str(DEFAULT_DB_PATH),
+    help=(
+        "ที่อยู่ของไฟล์ maintenance_logs.db\n"
+        "ถ้ารันบนเครื่องอื่นให้ใส่ network path เช่น \\\\192.168.1.50\\maintenance-agent\\logs\\maintenance_logs.db"
+    ),
+)
+db_path = Path(db_path_str)
+
 # 👇 ทำเป็น dropdown ของหมายเลขเครื่อง
 CLIENT_OPTIONS = ["001", "002", "003", "004", "005"]
 
@@ -146,13 +157,13 @@ client_id = st.sidebar.selectbox(
 # =====================================================================
 # MODE 1: DASHBOARD (ดึงข้อมูลจริงจาก maintenance_logs.db)
 # =====================================================================
-def render_dashboard():
+def render_dashboard(db_path: Path):
     st.markdown(
         "<h1 style='color:#007bff;'>🏭 Factory Machine Maintenance Dashboard</h1>",
         unsafe_allow_html=True,
     )
 
-    df = load_logs_from_db(DB_PATH)
+    df = load_logs_from_db(db_path)
 
     if df.empty:
         st.info(
@@ -463,12 +474,10 @@ def render_agent():
                 except Exception as e:
                     st.error(f"Request failed: {e}")
 
-
-
 # ---------------------
 # Main switch by mode
 # ---------------------
 if mode == "Dashboard":
-    render_dashboard()
+    render_dashboard(db_path)  # 👈 ส่ง path ที่กรอกจาก sidebar เข้าไป
 else:
     render_agent()
