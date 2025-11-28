@@ -126,7 +126,7 @@ st.sidebar.header("Settings")
 mode = st.sidebar.radio(
     "Mode",
     options=["Dashboard", "Maintenance Agent"],
-    index=1,
+    index=0,
     help="เลือกเปิดหน้า Dashboard หรือหน้า Maintenance Agent",
 )
 
@@ -227,25 +227,41 @@ def render_dashboard():
 
     critical_defects = ng_count if ng_count is not None else None
 
+    # เตรียมข้อความสำหรับแสดง
+    if total > 0:
+        uptime = ok_count / total * 100.0
+        uptime_str = f"{uptime:.1f}%"
+    else:
+        uptime_str = "No data"
+
+    if "latency_ms" in df.columns and not df_filtered["latency_ms"].isna().all():
+        avg_latency = df_filtered["latency_ms"].mean()
+        latency_str = f"{avg_latency:.0f} ms"
+    else:
+        latency_str = "N/A"
+
+    critical_defects = ng_count if ng_count is not None else None
+    critical_str = critical_defects if critical_defects is not None else "N/A"
+
+    # ----- 3 KPI cards -----
     col1, col2, col3 = st.columns(3)
 
-    st.markdown("### Uptime (%)")
-
-    if total > 0:
-        uptime = (ok_count / total) * 100.0
+    # Uptime card (ให้ดันขึ้นมาเป็นกรอบเหมือนตัวอื่น)
+    with col1:
         st.markdown(
-            f"<h1 style='color:#28a745;'>{uptime:.1f}%</h1>",
+            f"""
+            <div style='padding:20px; background:white; border-radius:10px;
+                        border-left:6px solid #28a745; box-shadow:0 2px 4px rgba(0,0,0,0.1);'>
+                <h4>Uptime (%)</h4>
+                <h1 style='color:#28a745;'>{uptime_str}</h1>
+                <p>OK / (OK + NG) ภายใต้ filter ปัจจุบัน</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    else:
-        # กรณีไม่มี log เลย หรือ filter แล้วเหลือ 0 แถว
-        st.markdown(
-            "<h3 style='color:#888;'>No data (all resolved / no issues)</h3>",
-            unsafe_allow_html=True,
-        )
 
+    # Avg latency card (เหมือนเดิม)
     with col2:
-        latency_str = f"{avg_latency:.0f} ms" if avg_latency is not None else "N/A"
         st.markdown(
             f"""
             <div style='padding:20px; background:white; border-radius:10px;
@@ -258,8 +274,8 @@ def render_dashboard():
             unsafe_allow_html=True,
         )
 
+    # Critical defects card (เหมือนเดิม)
     with col3:
-        critical_str = critical_defects if critical_defects is not None else "N/A"
         st.markdown(
             f"""
             <div style='padding:20px; background:white; border-radius:10px;
@@ -271,8 +287,6 @@ def render_dashboard():
             """,
             unsafe_allow_html=True,
         )
-
-    st.write("")
 
     # --------------------- Charts ---------------------
     left, right = st.columns(2)
