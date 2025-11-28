@@ -46,7 +46,6 @@ LOCAL_DB_PATH = Path("logs") / "maintenance_logs.db"
 DB_PATH = SERVER_DB_PATH if SERVER_DB_PATH.exists() else LOCAL_DB_PATH
 
 
-
 st.set_page_config(
     page_title="Maintenance Agent & Dashboard",
     layout="wide",
@@ -146,7 +145,7 @@ api_url = st.sidebar.text_input("Backend API URL", DEFAULT_API_URL)
 # 🔌 Dashboard DB path (ดึงจากเครื่องไหนก็ได้)
 db_path_str = st.sidebar.text_input(
     "Dashboard DB path",
-    value=str(DEFAULT_DB_PATH),
+    value=str(DB_PATH),
     help=(
         "ที่อยู่ของไฟล์ maintenance_logs.db\n"
         "ถ้ารันบนเครื่องอื่นให้ใส่ network path เช่น \\\\192.168.1.50\\maintenance-agent\\logs\\maintenance_logs.db"
