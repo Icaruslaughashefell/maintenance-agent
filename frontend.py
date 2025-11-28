@@ -29,11 +29,22 @@ from datetime import datetime, timedelta
 # ---------------------
 # Config
 # ---------------------
+# ---------------------
+# Config
+# ---------------------
 DEFAULT_API_URL = "http://127.0.0.1:8000/analyze"
 
-# path default (กรณีรัน frontend บนเครื่องเดียวกับ backend)
-ROOT_DIR = Path(__file__).parent
-DEFAULT_DB_PATH = ROOT_DIR / "logs" / "maintenance_logs.db"
+# ตำแหน่งไฟล์ DB บนเครื่องเซิร์ฟเวอร์ (ผ่าน Network)
+SERVER_DB_PATH = Path(
+    r"\\10.125.196.166\maintenance-agent-logs\maintenance_logs.db"
+)
+
+# fallback: กรณีรันบนเครื่อง server เอง หรือเข้า network share ไม่ได้
+LOCAL_DB_PATH = Path("logs") / "maintenance_logs.db"
+
+# เลือกใช้ SERVER_DB_PATH ถ้าเข้าถึงได้ ไม่งั้นใช้ LOCAL_DB_PATH
+DB_PATH = SERVER_DB_PATH if SERVER_DB_PATH.exists() else LOCAL_DB_PATH
+
 
 
 st.set_page_config(
